@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Store a secret in ~/.config/tokens/<NAME>.env without it ever appearing on screen or in a command line.
+# The value is read silently. Files are readable by the owner only.
+#
+# Usage: store-token <NAME>
+#   Example: store-token GITLAB_TOKEN
+set -euo pipefail
+
+name="${1:?variable name, e.g. GITLAB_TOKEN}"
+[[ "$name" =~ ^[A-Z][A-Z0-9_]*$ ]] || { echo "Invalid name: use UPPER_SNAKE_CASE." >&2; exit 1; }
+
+dir="${HOME}/.config/tokens"
+mkdir -p "$dir"
+chmod 700 "$dir"
+
+read -r -s -p "Value of ${name} (hidden): " value
+echo
+[ -n "$value" ] || { echo "Empty value, nothing done." >&2; exit 1; }
+
+file="${dir}/${name}.env"
+umask 077
+printf '%s="%s"\n' "$name" "$value" > "$file"
+chmod 600 "$file"
+unset value
+echo "${name}: stored in ${file} (mode 600)."

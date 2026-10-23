@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Pre-commit hook: block secrets. Enabled by install.sh (core.hooksPath).
+exec "$(git rev-parse --show-toplevel)/scripts/check-secrets.sh"

@@ -1,0 +1,5 @@
+# NAME EXPIRY(YYYY-MM-DD) description. Names and dates only, never a value.
+# Copy to ~/.config/tokens/expiry.list (mode 600). The `tokens` command reads it.
+example-github-pat 2027-01-31 GitHub fine-grained, repo X
+example-gitlab-ci 2027-02-15 GitLab CI token for project Y
+example-gpg-key 2028-10-19 GPG signing key

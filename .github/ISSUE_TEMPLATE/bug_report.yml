@@ -1,0 +1,37 @@
+name: Bug report
+description: A command fails, or the shell does something it should not.
+labels: [bug]
+body:
+  - type: input
+    id: command
+    attributes:
+      label: Command or file
+      description: The command you ran, or the file of `~/.bashrc.d/` involved, for example `maj`.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output and error
+      description: What the shell printed. Please remove anything private.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: input
+    id: bash
+    attributes:
+      label: Bash version
+      description: Output of `bash --version`, for example 5.2.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Commit of this repository, distribution, WSL or not, and anything local that changes the shell.
