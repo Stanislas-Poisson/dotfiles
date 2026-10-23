@@ -25,10 +25,14 @@ function jarvis() {
 }
 
 # GitHub: gh with the personal token or the Zairakai token, for one command only.
-# Usage: ghp repo list Stanislas-Poisson | ghz repo list Zairakai
+# Plain gh uses the personal token: there is no stored gh login.
+# Usage: gh repo list | ghp repo list Stanislas-Poisson | ghz repo list Zairakai
 function ghp() {
     ( . "${HOME}/.config/tokens/GITHUB_TOKEN_PERSONAL.env" && GH_TOKEN="${GITHUB_TOKEN_PERSONAL}" command gh "$@" )
 }
 function ghz() {
     ( . "${HOME}/.config/tokens/GITHUB_TOKEN_ZAIRAKAI.env" && GH_TOKEN="${GITHUB_TOKEN_ZAIRAKAI}" command gh "$@" )
+}
+function gh() {
+    ghp "$@"
 }
