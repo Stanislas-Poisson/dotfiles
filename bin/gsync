@@ -118,11 +118,23 @@ def sync(repo, dry_run, clean):
         result['status'] = 'no remote'
         return result
 
+    tag_problems = []
+
     if not dry_run:
-        fetch = git(repo, 'fetch', '--all', '--prune', '--tags', '--quiet', timeout=FETCH_TIMEOUT)
+        fetch = git(repo, 'fetch', '--all', '--prune', '--quiet', timeout=FETCH_TIMEOUT)
         if fetch.returncode != 0:
             result['status'] = 'fetch failed'
             result['notes'].append(fetch.stderr.strip().splitlines()[-1] if fetch.stderr.strip() else 'fetch failed')
+            return result
+
+        # A tag that was moved on the remote is reported, never overwritten.
+        tags = git(repo, 'fetch', '--tags', timeout=FETCH_TIMEOUT)
+        for line in tags.stderr.splitlines():
+            if 'would clobber existing tag' in line:
+                tag_problems.append(f'tag {line.split("]")[-1].split("->")[0].strip()} differs from the remote')
+        if tags.returncode != 0 and not tag_problems:
+            result['status'] = 'fetch failed'
+            result['notes'].append(tags.stderr.strip().splitlines()[-1] if tags.stderr.strip() else 'tag fetch failed')
             return result
 
     current = out(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD')
@@ -130,7 +142,7 @@ def sync(repo, dry_run, clean):
     checked_out = worktree_branches(repo)
     fmt = '%(refname:short)|%(upstream:short)|%(upstream:track)'
     rows = [line.split('|') for line in out(repo, 'for-each-ref', f'--format={fmt}', 'refs/heads/').splitlines()]
-    problems = []
+    problems = list(tag_problems)
 
     for branch, upstream, track in rows:
         if not upstream or track == '[gone]':
@@ -229,8 +241,19 @@ def main():
         except subprocess.TimeoutExpired:
             return os.path.relpath(path, root), {'status': 'timeout', 'advanced': [], 'deleted': [], 'notes': []}
 
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        rows = sorted(pool.map(work, repos), key=lambda row: row[0])
+    rows = []
+    pool = ThreadPoolExecutor(max_workers=6)
+    try:
+        for done, row in enumerate(pool.map(work, repos), start=1):
+            rows.append(row)
+            print(f'\r{done}/{len(repos)}', end='', file=sys.stderr, flush=True)
+    except KeyboardInterrupt:
+        pool.shutdown(wait=False, cancel_futures=True)
+        print('\nInterrupted: nothing was written to the settings file.', file=sys.stderr)
+        return 130
+    pool.shutdown()
+    print('\r', end='', file=sys.stderr)
+    rows.sort(key=lambda row: row[0])
 
     mode = ' (dry run)' if args.dry_run else ''
     print(f'{len(rows)} repositories{mode}\n')
