@@ -26,6 +26,7 @@ The shell setup of Stanislas Poisson (Debian on WSL2): a thin `~/.bashrc` that l
 | `bashrc.d/60-ai-tokens.sh` | `claude`, `jarvis`, `ghp`, `ghz`: load tokens for one process only. |
 | `bashrc.d/70-token-expiry.sh` | `tokens` command and the warning shown when a secret expires soon. |
 | `bin/store-token` | Stores a secret in `~/.config/tokens/<NAME>.env` without showing it. |
+| `bin/gsync` | Fetches and fast-forwards every Git repository under the roots of `~/.config/gsync.json` (local, not versioned), skips the `ignore` list, prints one line per repository. `-n` changes nothing, `--clean` also deletes the local branches whose remote is gone and already merged. |
 | `tokens/expiry.list.example` | Format of the expiry list (names and dates only). |
 | `scripts/check-secrets.sh` | Secret scanner, run by the pre-commit hook and by the CI. |
 | `install.sh` | Links everything into `$HOME`. |
