@@ -25,6 +25,7 @@ link() {
 link "${repo}/bashrc" "${HOME}/.bashrc"
 link "${repo}/bashrc.d" "${HOME}/.bashrc.d"
 link "${repo}/bin/store-token" "${HOME}/.local/bin/store-token"
+link "${repo}/bin/gsync" "${HOME}/.local/bin/gsync"
 
 # Secrets directory: owner only
 mkdir -p "${HOME}/.config/tokens"

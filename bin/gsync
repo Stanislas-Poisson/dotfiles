@@ -1,0 +1,276 @@
+#!/usr/bin/env python3
+"""Bring every Git repository under the configured roots up to date, then print one line per repository.
+
+Usage: gsync [-n] [--clean] [--config FILE]
+  -n, --dry-run   Change nothing, fetch nothing: report what a run would do with the refs already known.
+  --clean         Also delete the local branches whose remote is gone and whose tip is already in origin/develop or origin/main.
+  --config FILE   Settings and state (default: ~/.config/gsync.json).
+
+The settings file is local to the machine and not versioned. "roots" are the trees to search, "ignore" the
+repositories or directories never touched (a name, a path relative to a root, or an absolute path). "last_run" and
+"repos" are written back at the end of each run.
+
+Nothing here rewrites history: a branch only moves forward (fast-forward), never from a dirty working tree for the
+branch that is checked out, and a diverged branch is reported, not touched.
+"""
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+
+DEFAULT_CONFIG = os.path.expanduser('~/.config/gsync.json')
+DEFAULT_SETTINGS = {
+    'roots': ['~/code'],
+    'ignore': ['kb-secrets', 'kb-secrets-key', 'datas', 'backups'],
+}
+SKIP_DIRS = {'node_modules', 'vendor', '.cache', '.venv'}
+PROTECTED = {'main', 'master', 'develop'}
+INTEGRATION = ('origin/develop', 'origin/main', 'origin/master')
+FETCH_TIMEOUT = 180
+
+
+def git(repo, *args, timeout=60):
+    env = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'LC_ALL': 'C'}
+    return subprocess.run(
+        ['git', '-C', repo, *args], capture_output=True, text=True, timeout=timeout, env=env, check=False
+    )
+
+
+def out(repo, *args):
+    result = git(repo, *args)
+    return result.stdout.strip() if result.returncode == 0 else ''
+
+
+def load(path):
+    if not os.path.exists(path):
+        return dict(DEFAULT_SETTINGS), True
+    with open(path, encoding='utf-8') as handle:
+        data = json.load(handle)
+    for key, value in DEFAULT_SETTINGS.items():
+        data.setdefault(key, value)
+    return data, False
+
+
+def save(path, data):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    temp = path + '.tmp'
+    with open(temp, 'w', encoding='utf-8') as handle:
+        json.dump(data, handle, indent=2, ensure_ascii=False)
+        handle.write('\n')
+    os.replace(temp, path)
+
+
+def ignored(path, root, entries):
+    relative = os.path.relpath(path, root)
+    name = os.path.basename(path)
+    for entry in entries:
+        expanded = os.path.expanduser(entry)
+        if os.path.isabs(expanded):
+            if os.path.normpath(expanded) == os.path.normpath(path):
+                return True
+        elif entry in (name, relative):
+            return True
+    return False
+
+
+def discover(roots, entries):
+    found = []
+    for root in roots:
+        root = os.path.normpath(os.path.expanduser(root))
+        if not os.path.isdir(root):
+            continue
+        for current, dirs, files in os.walk(root):
+            if ignored(current, root, entries):
+                dirs[:] = []
+                continue
+            if '.git' in dirs or '.git' in files:
+                found.append((root, current))
+                dirs[:] = []
+                continue
+            dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith('.'))
+    return found
+
+
+def worktree_branches(repo):
+    branches = set()
+    for line in out(repo, 'worktree', 'list', '--porcelain').splitlines():
+        if line.startswith('branch refs/heads/'):
+            branches.add(line[len('branch refs/heads/'):])
+    return branches
+
+
+def is_ancestor(repo, commit, ref):
+    return git(repo, 'merge-base', '--is-ancestor', commit, ref).returncode == 0
+
+
+def ref_exists(repo, ref):
+    return git(repo, 'rev-parse', '--verify', '--quiet', ref).returncode == 0
+
+
+def sync(repo, dry_run, clean):
+    result = {'status': 'up to date', 'advanced': [], 'deleted': [], 'notes': []}
+
+    if not out(repo, 'remote'):
+        result['status'] = 'no remote'
+        return result
+
+    tag_problems = []
+
+    if not dry_run:
+        fetch = git(repo, 'fetch', '--all', '--prune', '--quiet', timeout=FETCH_TIMEOUT)
+        if fetch.returncode != 0:
+            result['status'] = 'fetch failed'
+            result['notes'].append(fetch.stderr.strip().splitlines()[-1] if fetch.stderr.strip() else 'fetch failed')
+            return result
+
+        # A tag that was moved on the remote is reported, never overwritten.
+        tags = git(repo, 'fetch', '--tags', timeout=FETCH_TIMEOUT)
+        for line in tags.stderr.splitlines():
+            if 'would clobber existing tag' in line:
+                tag_problems.append(f'tag {line.split("]")[-1].split("->")[0].strip()} differs from the remote')
+        if tags.returncode != 0 and not tag_problems:
+            result['status'] = 'fetch failed'
+            result['notes'].append(tags.stderr.strip().splitlines()[-1] if tags.stderr.strip() else 'tag fetch failed')
+            return result
+
+    current = out(repo, 'symbolic-ref', '--quiet', '--short', 'HEAD')
+    dirty = bool(out(repo, 'status', '--porcelain', '--untracked-files=no'))
+    checked_out = worktree_branches(repo)
+    fmt = '%(refname:short)|%(upstream:short)|%(upstream:track)'
+    rows = [line.split('|') for line in out(repo, 'for-each-ref', f'--format={fmt}', 'refs/heads/').splitlines()]
+    problems = list(tag_problems)
+
+    for branch, upstream, track in rows:
+        if not upstream or track == '[gone]':
+            continue
+        counts = out(repo, 'rev-list', '--left-right', '--count', f'{branch}...{upstream}').split()
+        if len(counts) != 2:
+            continue
+        ahead, behind = int(counts[0]), int(counts[1])
+        if behind == 0:
+            if ahead:
+                result['notes'].append(f'{branch} ahead by {ahead}')
+            continue
+        if ahead:
+            problems.append(f'{branch} diverged')
+            continue
+        if branch == current:
+            if dirty:
+                problems.append(f'{branch} dirty')
+                continue
+            if not dry_run and git(repo, 'merge', '--ff-only', '--quiet', upstream).returncode != 0:
+                problems.append(f'{branch} not advanced')
+                continue
+        elif branch in checked_out:
+            problems.append(f'{branch} in another worktree')
+            continue
+        elif not dry_run:
+            old = out(repo, 'rev-parse', branch)
+            new = out(repo, 'rev-parse', upstream)
+            if git(repo, 'update-ref', '-m', 'gsync: fast-forward', f'refs/heads/{branch}', new, old).returncode != 0:
+                problems.append(f'{branch} not advanced')
+                continue
+        result['advanced'].append(f'{branch} +{behind}')
+
+    if clean:
+        targets = [ref for ref in INTEGRATION if ref_exists(repo, ref)]
+        for branch, upstream, track in rows:
+            # Only a branch whose remote is gone: a long-lived branch (dev, preprod) or one just created is never a candidate.
+            if track != '[gone]' or branch in PROTECTED or branch == current or branch in checked_out:
+                continue
+            if any(is_ancestor(repo, branch, ref) for ref in targets):
+                if dry_run or git(repo, 'branch', '-D', branch).returncode == 0:
+                    result['deleted'].append(branch)
+            else:
+                result['notes'].append(f'{branch} gone, not merged')
+
+    if problems:
+        result['status'] = 'attention'
+        result['notes'].extend(problems)
+    elif result['advanced']:
+        result['status'] = 'updated'
+    return result
+
+
+def table(rows):
+    if not rows:
+        return
+    headers = ('Repository', 'State', 'Advanced', 'Deleted', 'Notes')
+    cells = [
+        (
+            name,
+            result['status'],
+            ', '.join(result['advanced']) or '-',
+            ', '.join(result['deleted']) or '-',
+            '; '.join(result['notes']) or '-',
+        )
+        for name, result in rows
+    ]
+    widths = [max(len(headers[i]), *(len(row[i]) for row in cells)) for i in range(len(headers))]
+    print('  '.join(headers[i].ljust(widths[i]) for i in range(len(headers))))
+    print('  '.join('-' * widths[i] for i in range(len(headers))))
+    for row in cells:
+        print('  '.join(row[i].ljust(widths[i]) for i in range(len(headers))))
+
+
+def main():
+    parser = argparse.ArgumentParser(prog='gsync', description='Bring every Git repository under the roots up to date.')
+    parser.add_argument('-n', '--dry-run', action='store_true', help='change nothing, fetch nothing')
+    parser.add_argument('--clean', action='store_true', help='delete the local branches already merged')
+    parser.add_argument('--config', default=DEFAULT_CONFIG, help='settings and state file')
+    args = parser.parse_args()
+
+    settings, created = load(args.config)
+    if created and not args.dry_run:
+        save(args.config, settings)
+        print(f'Settings created: {args.config}')
+
+    repos = discover(settings['roots'], settings['ignore'])
+    if not repos:
+        print('No repository found under the roots.')
+        return 0
+
+    def work(item):
+        root, path = item
+        try:
+            return os.path.relpath(path, root), sync(path, args.dry_run, args.clean)
+        except subprocess.TimeoutExpired:
+            return os.path.relpath(path, root), {'status': 'timeout', 'advanced': [], 'deleted': [], 'notes': []}
+
+    rows = []
+    pool = ThreadPoolExecutor(max_workers=6)
+    try:
+        for done, row in enumerate(pool.map(work, repos), start=1):
+            rows.append(row)
+            print(f'\r{done}/{len(repos)}', end='', file=sys.stderr, flush=True)
+    except KeyboardInterrupt:
+        pool.shutdown(wait=False, cancel_futures=True)
+        print('\nInterrupted: nothing was written to the settings file.', file=sys.stderr)
+        return 130
+    pool.shutdown()
+    print('\r', end='', file=sys.stderr)
+    rows.sort(key=lambda row: row[0])
+
+    mode = ' (dry run)' if args.dry_run else ''
+    print(f'{len(rows)} repositories{mode}\n')
+    table(rows)
+
+    failed = [name for name, result in rows if result['status'] in ('fetch failed', 'timeout')]
+    attention = [name for name, result in rows if result['status'] == 'attention']
+    print(f'\n{len(rows) - len(failed) - len(attention)} fine, {len(attention)} need attention, {len(failed)} failed.')
+
+    if not args.dry_run:
+        now = datetime.now().astimezone().isoformat(timespec='seconds')
+        settings['last_run'] = now
+        settings['repos'] = {name: {**result, 'last': now} for name, result in rows}
+        save(args.config, settings)
+
+    return 1 if failed else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
