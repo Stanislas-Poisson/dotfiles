@@ -23,7 +23,7 @@ The shell setup of Stanislas Poisson (Debian on WSL2): a thin `~/.bashrc` that l
 | `bashrc.d/30-functions.sh` | `maj`, `mkcd`, `extract`, `psg`, `serve`, `vps-clear`, `myip`. |
 | `bashrc.d/40-wsl.sh` | WSL only: `explore`, `open`. |
 | `bashrc.d/50-tools.sh` | Bash completion. Node is the system package, there is no version manager. |
-| `bashrc.d/60-ai-tokens.sh` | `claude`, `jarvis`, `ghp`, `ghz`: load tokens for one process only. |
+| `bashrc.d/60-ai-tokens.sh` | `claude`, `ghp`, `ghz`: load tokens for one process only. |
 | `bashrc.d/70-token-expiry.sh` | `tokens` command and the warning shown when a secret expires soon. |
 | `bin/store-token` | Stores a secret in `~/.config/tokens/<NAME>.env` without showing it. |
 | `bin/gsync` | Fetches and fast-forwards every Git repository under the roots of `~/.config/gsync.json` (local, not versioned), skips the `ignore` list, prints one line per repository. `-n` changes nothing, `--clean` also deletes the local branches whose remote is gone and already merged. |
@@ -70,7 +70,6 @@ The git status is cached for 2 seconds to keep large repositories fast.
 | Command | What it does |
 | :--- | :--- |
 | `claude` | Starts Claude Code with the tokens of `~/.config/tokens/*.env` loaded into that process only (sub-shell and `exec`). |
-| `jarvis` | Starts Claude Code from `~/jarvis-life`, with no token. |
 | `ghp ...` / `ghz ...` | Runs `gh` with the personal or the organization token, for one command. |
 | `tokens` | Lists the secrets with the days left before expiry (red under 15 days, yellow under 31). |
 | `store-token NAME` | Stores a secret read silently into `~/.config/tokens/NAME.env`. |

@@ -16,14 +16,6 @@ function claude() {
     )
 }
 
-# JARVIS Life: personal confidant, always started from the jarvis-life repository (no token needed).
-function jarvis() {
-    (
-        cd "${HOME}/jarvis-life" || return 1
-        exec claude --dangerously-skip-permissions "$@"
-    )
-}
-
 # GitHub: gh with the personal token or the Zairakai token, for one command only.
 # Plain gh uses the personal token: there is no stored gh login.
 # Usage: gh repo list | ghp repo list Stanislas-Poisson | ghz repo list Zairakai
