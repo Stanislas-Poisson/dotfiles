@@ -205,8 +205,8 @@ def table(rows):
             name,
             result['status'],
             ', '.join(result['advanced']) or '-',
-            ', '.join(result['deleted']) or '-',
-            '; '.join(result['notes']) or '-',
+            str(len(result['deleted'])) if result['deleted'] else '-',
+            str(len(result['notes'])) if result['notes'] else '-',
         )
         for name, result in rows
     ]
@@ -215,6 +215,22 @@ def table(rows):
     print('  '.join('-' * widths[i] for i in range(len(headers))))
     for row in cells:
         print('  '.join(row[i].ljust(widths[i]) for i in range(len(headers))))
+
+
+def details(rows, dry_run):
+    """One list per kind of detail, one item per line, under the table."""
+    for key, title in (
+        ('deleted', 'Branches that would be deleted' if dry_run else 'Branches deleted'),
+        ('notes', 'Notes'),
+    ):
+        items = [(name, result[key]) for name, result in rows if result[key]]
+        if not items:
+            continue
+        print(f'\n{title}')
+        for name, values in items:
+            print(f'\n  {name}')
+            for value in values:
+                print(f'    - {value}')
 
 
 def main():
@@ -258,8 +274,9 @@ def main():
     mode = ' (dry run)' if args.dry_run else ''
     print(f'{len(rows)} repositories{mode}\n')
     table(rows)
+    details(rows, args.dry_run)
 
-    failed = [name for name, result in rows if result['status'] in ('fetch failed', 'timeout')]
+    failed =[name for name, result in rows if result['status'] in ('fetch failed', 'timeout')]
     attention = [name for name, result in rows if result['status'] == 'attention']
     print(f'\n{len(rows) - len(failed) - len(attention)} fine, {len(attention)} need attention, {len(failed)} failed.')
 
