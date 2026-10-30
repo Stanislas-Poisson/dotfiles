@@ -16,14 +16,17 @@ function claude() {
     )
 }
 
-# GitHub: gh with the personal token or the Zairakai token, for one command only.
+# GitHub: gh with the personal, Zairakai or archived-organisation token, for one command only.
 # Plain gh uses the personal token: there is no stored gh login.
-# Usage: gh repo list | ghp repo list Stanislas-Poisson | ghz repo list Zairakai
+# Usage: gh repo list | ghp repo list Stanislas-Poisson | ghz repo list Zairakai | gha repo list GE-Pro-Archived
 function ghp() {
     ( . "${HOME}/.config/tokens/GITHUB_TOKEN_PERSONAL.env" && GH_TOKEN="${GITHUB_TOKEN_PERSONAL}" command gh "$@" )
 }
 function ghz() {
     ( . "${HOME}/.config/tokens/GITHUB_TOKEN_ZAIRAKAI.env" && GH_TOKEN="${GITHUB_TOKEN_ZAIRAKAI}" command gh "$@" )
+}
+function gha() {
+    ( . "${HOME}/.config/tokens/GITHUB_TOKEN_ARCHIVED.env" && GH_TOKEN="${GITHUB_TOKEN_ARCHIVED}" command gh "$@" )
 }
 function gh() {
     ghp "$@"
