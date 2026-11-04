@@ -20,6 +20,5 @@ if [ -f ~/.bash_aliases ]; then
 fi
 
 # KB settings for this machine's paths.
-export KB_BUNDLE_DIR="${HOME}/code/datas/kb-bundles"
 # Paths the kb command guard asks confirmation for before a destructive command (colon separated).
 export KB_PROTECTED_PATHS="${HOME}/.gnupg:${HOME}/.ssh:${HOME}/.config/tokens:${HOME}/code/datas/revocation-certs:${HOME}/code/kb-secrets-key"
