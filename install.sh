@@ -8,18 +8,18 @@ stamp="$(date +%Y%m%d-%H%M%S)"
 
 # link <source> <target>
 link() {
-    local src="$1" dst="$2"
-    if [[ -L "${dst}" && "$(readlink -f "${dst}")" == "$(readlink -f "${src}")" ]]; then
-        echo "ok      ${dst}"
-        return
-    fi
-    if [[ -e "${dst}" || -L "${dst}" ]]; then
-        mv "${dst}" "${dst}.bak-${stamp}"
-        echo "moved   ${dst} -> ${dst}.bak-${stamp}"
-    fi
-    mkdir -p "$(dirname "${dst}")"
-    ln -s "${src}" "${dst}"
-    echo "linked  ${dst} -> ${src}"
+  local src="$1" dst="$2"
+  if [[ -L "${dst}" && "$(readlink -f "${dst}")" == "$(readlink -f "${src}")" ]]; then
+    echo "ok      ${dst}"
+    return
+  fi
+  if [[ -e "${dst}" || -L "${dst}" ]]; then
+    mv "${dst}" "${dst}.bak-${stamp}"
+    echo "moved   ${dst} -> ${dst}.bak-${stamp}"
+  fi
+  mkdir -p "$(dirname "${dst}")"
+  ln -s "${src}" "${dst}"
+  echo "linked  ${dst} -> ${src}"
 }
 
 link "${repo}/bashrc" "${HOME}/.bashrc"
@@ -33,9 +33,9 @@ chmod 700 "${HOME}/.config/tokens"
 
 # Expiry list: created from the example only when missing
 if [[ ! -f "${HOME}/.config/tokens/expiry.list" ]]; then
-    cp "${repo}/tokens/expiry.list.example" "${HOME}/.config/tokens/expiry.list"
-    chmod 600 "${HOME}/.config/tokens/expiry.list"
-    echo "created ${HOME}/.config/tokens/expiry.list (edit it with your own tokens)"
+  cp "${repo}/tokens/expiry.list.example" "${HOME}/.config/tokens/expiry.list"
+  chmod 600 "${HOME}/.config/tokens/expiry.list"
+  echo "created ${HOME}/.config/tokens/expiry.list (edit it with your own tokens)"
 fi
 
 # Block secrets before every commit of this repository
